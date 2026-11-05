@@ -32,13 +32,20 @@ func makeRequest(ctx context.Context, client *http.Client, url string, results c
 
 
 func main() {
-	help := flag.Bool("help", false, "Show help")
-	h := flag.Bool("h", false, "Show help")
-	t := flag.Int("t", 15, "Timer")
+
+	var help bool
+
+	flag.Bool(&help,"help", false, "Show help")
+	flag.Bool(&help,"h", false, "Show help")
+	
+	var t int
+	flag.IntVar(&t, "t", 15, "Timer")
+	flag.IntVar(&t, "timeout", 15, "Timer")
+
 	flag.Parse()
 
-	if *help || *h {
-		fmt.Println("Использование: hedgedcurl [-t seconds] URL...")
+	if help {
+		fmt.Println("Использование: hedgedcurl [-t,--timeout seconds] URL...")
 		return
 	}
 
@@ -74,10 +81,6 @@ func main() {
 			lastErr = res.err
 			continue
 		}
-		if res.resp.StatusCode >= 500 {
-			res.resp.Body.Close()
-			continue
-		}
 
 		gotResponse = true
 
@@ -90,12 +93,25 @@ func main() {
 		fmt.Println()
 
 		_, err := io.Copy(os.Stdout, res.resp.Body)
+
 		if err != nil {
 			fmt.Fprintln(os.Stderr, "Error reading body:", err)
+
+			if errors.Is(err, context.DeadlineExceeded) {
+				res.resp.Body.Close()
+				cancel()
+				os.Exit(228)
+			}
+
+			res.resp.Body.Close()
+			cancel()
+			os.Exit(1)
 		}
+
 		res.resp.Body.Close()
 		cancel()
 		break
+
 	}
 
 	if !gotResponse {
